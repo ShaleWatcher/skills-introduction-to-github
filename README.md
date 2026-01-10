@@ -1,73 +1,78 @@
-<header>
+# Kalshi Bitcoin UP/DOWN arbitrage simulator
 
-<!--
-  <<< Author notes: Course header >>>
-  Include a 1280×640 image, course title in sentence case, and a concise description in emphasis.
-  In your repository settings: enable template repository, add your 1280×640 social image, auto delete head branches.
-  Add your open source license, GitHub uses MIT license.
--->
+An **algorithm + scenario simulator** for Kalshi-style “Bitcoin UP or DOWN” binary contracts, focused on detecting **locked (risk-free) pair arbitrage** using top-of-book quotes and then replaying many simulated days to estimate how often it appears and how much it can make under fees + capital limits.
 
-# Introduction to GitHub
+> This is a research/simulation scaffold. Real trading requires exchange-specific APIs, risk controls, and careful handling of fills/latency.
 
-_Get started using GitHub in less than an hour._
+## What “locked arbitrage” means here
 
-</header>
+If you have two markets that represent **mutually exclusive + collectively exhaustive** outcomes (UP vs DOWN) for the same settlement:
 
-<!--
-  <<< Author notes: Step 2 >>>
-  Start this step by acknowledging the previous step.
-  Define terms and link to docs.github.com.
--->
+- **Buy YES(UP) + Buy YES(DOWN)** always pays **$1** at expiry (exactly one YES wins).
+- **Buy NO(UP) + Buy NO(DOWN)** also always pays **$1** at expiry.
 
-## Step 2: Commit a file
+So the “free money” test is:
 
-_You created a branch! :tada:_
+- **YES pair arb** when \(ask\_yes\_up + ask\_yes\_down + fees < 1\)
+- **NO pair arb** when \(ask\_no\_up + ask\_no\_down + fees < 1\)
 
-Creating a branch allows you to edit your project without changing the `main` branch. Now that you have a branch, it’s time to create a file and make your first commit!
+The code in `kalshi_arbitrage/arbitrage.py` computes this from a `TopOfBook` snapshot (best bid/ask + size).
 
-**What is a commit?**: A _[commit](https://docs.github.com/pull-requests/committing-changes-to-your-project/creating-and-editing-commits/about-commits)_ is a set of changes to the files and folders in your project. A commit exists in a branch. For more information, see "[About commits](https://docs.github.com/en/pull-requests/committing-changes-to-your-project/creating-and-editing-commits/about-commits)".
+## Run the scenario simulator
 
-### :keyboard: Activity: Your first commit
+This repo is stdlib-only; use `python3`.
 
-The following steps will guide you through the process of committing a change on GitHub. A commit records changes in renaming, changing content within, creating a new file, and any other changes made to your project. For this exercise, committing a change requires first adding a new file to your new branch.
+### Monte Carlo run
 
-> [!NOTE]
-> `.md` is a file extension that creates a Markdown file. You can learn more about Markdown by visiting "[Basic writing and formatting syntax](https://docs.github.com/en/get-started/writing-on-github/getting-started-with-writing-and-formatting-on-github/basic-writing-and-formatting-syntax)" in our docs or by taking the "[Communicating using Markdown](https://github.com/skills/communicate-using-markdown)" Skills course.
+```bash
+python3 -m kalshi_arbitrage.simulate --sims 500 --steps 390 --horizon-days 1 \
+  --start-cash 1000 --fee 0.01 --spread 0.01 --mid-noise 0.03 --depth 200
+```
 
-1. On the **< > Code** tab in the header menu of your repository, make sure you're on your new branch `my-first-branch`.
+You can tune:
+- **fees** (`--fee`) and **capital** (`--start-cash`) to see if arbs survive frictions
+- **spread/noise** to make markets more/less efficient
+- **max size per trade** (`--max-pairs-per-trade`) to model fill limits
 
-2. Select the **Add file** drop-down and click **Create new file**.
+### Run tests
 
-   ![create new file option](/images/create-new-file.png)
+```bash
+python3 -m unittest discover -s tests -q
+```
 
-3. In the **Name your file...** field, enter `PROFILE.md`.
+## Code layout
 
-4. In the **Enter file contents here** area, copy the following content to your file:
+- `kalshi_arbitrage/models.py`: top-of-book model (`TopOfBook`)
+- `kalshi_arbitrage/arbitrage.py`: UP/DOWN pair-arb detection
+- `kalshi_arbitrage/scenarios.py`: BTC path model + synthetic orderbooks
+- `kalshi_arbitrage/simulate.py`: CLI Monte Carlo runner
+- `kalshi_arbitrage/monitor.py`: simple polling monitor (file/URL JSON) for live-style following
 
-   ```
-   Welcome to my GitHub profile!
-   ```
+## Next step (live “follow the contract”)
 
-   ![profile.md file screenshot](/images/my-profile-file.png)
+To “follow” the live Kalshi UP/DOWN contract you’d add a small adapter that:
+- fetches top-of-book for the two markets on an interval (or websocket if available)
+- converts Kalshi cents → dollars and fills a `TopOfBook`
+- calls `find_up_down_arbs(up, down, fee_per_contract=..., min_profit_per_pair=...)`
+- logs alerts (or places orders, if you wire execution + risk checks)
 
-5. Click **Commit changes...** in the upper right corner above the contents box. For commits, you can enter a short commit message that describes what changes you made. This message helps others know what's included in your commit. GitHub offers a simple default message, but let's change it slightly for practice. First, enter `Add PROFILE.md` in the first text-entry field titled "Commit message".
+If you can export top-of-book snapshots to a simple JSON shape like:
 
-   ![screenshot of adding a new file with a commit message](/images/commit-full-screen.png)
+```json
+{
+  "yes_bid": 0.48,
+  "yes_bid_size": 100,
+  "yes_ask": 0.50,
+  "yes_ask_size": 120,
+  "no_bid": 0.50,
+  "no_bid_size": 100,
+  "no_ask": 0.52,
+  "no_ask_size": 120
+}
+```
 
-6. In this lesson, we'll ignore the other fields and click **Commit changes**.
-7. Wait about 20 seconds then refresh this page (the one you're following instructions from). [GitHub Actions](https://docs.github.com/en/actions) will automatically update to the next step.
+…then you can “follow” them with:
 
-<footer>
-
-<!--
-  <<< Author notes: Footer >>>
-  Add a link to get support, GitHub status page, code of conduct, license link.
--->
-
----
-
-Get help: [Post in our discussion board](https://github.com/orgs/skills/discussions/categories/introduction-to-github) &bull; [Review the GitHub status page](https://www.githubstatus.com/)
-
-&copy; 2024 GitHub &bull; [Code of Conduct](https://www.contributor-covenant.org/version/2/1/code_of_conduct/code_of_conduct.md) &bull; [MIT License](https://gh.io/mit)
-
-</footer>
+```bash
+python3 -m kalshi_arbitrage.monitor --up path/to/up.json --down path/to/down.json --units dollars
+```
