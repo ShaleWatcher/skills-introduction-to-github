@@ -74,43 +74,13 @@ def run_once(
     depth: int,
     output: str,
 ) -> int:
-    now = _now_ts()
-    max_ts = now + int(lookahead_minutes) * 60
-
-    mkts = list_markets(
+    rows = compute_lock_spread_signals(
         series_ticker=series_ticker,
-        min_close_ts=now - 60,  # include currently-open markets
-        max_close_ts=max_ts,
-        status="",  # allow time filtering across statuses
+        lookahead_minutes=lookahead_minutes,
+        fee_per_contract=fee_per_contract,
+        min_profit_per_pair=min_profit_per_pair,
+        depth=depth,
     )
-
-    rows: list[LockSpreadSignal] = []
-    for m in mkts:
-        ticker = m.get("ticker")
-        if not ticker:
-            continue
-        sig = signal_for_ticker(
-            ticker,
-            fee_per_contract=fee_per_contract,
-            min_profit_per_pair=min_profit_per_pair,
-            depth=depth,
-        )
-        if sig is None:
-            continue
-        # attach close_time for sorting/printing
-        if m.get("close_time"):
-            sig = LockSpreadSignal(**{**asdict(sig), "close_time": str(m["close_time"])})
-        rows.append(sig)
-
-    # Sort by soonest close time (then highest profit).
-    def sort_key(r: LockSpreadSignal):
-        try:
-            t = _parse_rfc3339(r.close_time).timestamp() if r.close_time else float("inf")
-        except Exception:
-            t = float("inf")
-        return (t, -r.expected_profit_per_pair)
-
-    rows.sort(key=sort_key)
 
     if output == "jsonl":
         for r in rows:
@@ -128,6 +98,56 @@ def run_once(
             )
 
     return 0
+
+
+def compute_lock_spread_signals(
+    *,
+    series_ticker: str,
+    lookahead_minutes: int,
+    fee_per_contract: float,
+    min_profit_per_pair: float,
+    depth: int,
+) -> list[LockSpreadSignal]:
+    """
+    Return lock-spread signals for all markets in a series that close within the lookahead window.
+    """
+
+    now = _now_ts()
+    max_ts = now + int(lookahead_minutes) * 60
+
+    mkts = list_markets(
+        series_ticker=series_ticker,
+        min_close_ts=now - 60,  # include currently-open markets
+        max_close_ts=max_ts,
+        status="",  # allow time filtering across statuses
+    )
+
+    rows: list[LockSpreadSignal] = []
+    for m in mkts:
+        ticker = m.get("ticker")
+        if not ticker:
+            continue
+        sig = signal_for_ticker(
+            str(ticker),
+            fee_per_contract=fee_per_contract,
+            min_profit_per_pair=min_profit_per_pair,
+            depth=depth,
+        )
+        if sig is None:
+            continue
+        if m.get("close_time"):
+            sig = LockSpreadSignal(**{**asdict(sig), "close_time": str(m["close_time"])})
+        rows.append(sig)
+
+    def sort_key(r: LockSpreadSignal):
+        try:
+            t = _parse_rfc3339(r.close_time).timestamp() if r.close_time else float("inf")
+        except Exception:
+            t = float("inf")
+        return (t, -r.expected_profit_per_pair)
+
+    rows.sort(key=sort_key)
+    return rows
 
 
 def main() -> int:
