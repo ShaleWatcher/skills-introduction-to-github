@@ -70,6 +70,72 @@ def fetch_orderbook(
     return json.loads(data.decode("utf-8"))
 
 
+def fetch_markets(
+    *,
+    series_ticker: str,
+    min_close_ts: int,
+    max_close_ts: int,
+    status: str = "",
+    limit: int = 1000,
+    cursor: str = "",
+    base_url: str = KALSHI_PUBLIC_BASE_URL,
+    timeout_s: float = 10.0,
+) -> dict[str, Any]:
+    """
+    Fetch a page of markets for a series using time bounds.
+
+    Timestamps are Unix seconds. `status` may be empty to allow broader filtering.
+    """
+
+    params: dict[str, str] = {
+        "series_ticker": series_ticker,
+        "min_close_ts": str(int(min_close_ts)),
+        "max_close_ts": str(int(max_close_ts)),
+        "limit": str(int(limit)),
+    }
+    if status:
+        params["status"] = status
+    if cursor:
+        params["cursor"] = cursor
+
+    url = f"{base_url}/markets?{urllib.parse.urlencode(params)}"
+    req = urllib.request.Request(url, headers={"Accept": "application/json"})
+    with urllib.request.urlopen(req, timeout=timeout_s) as resp:
+        data = resp.read()
+    return json.loads(data.decode("utf-8"))
+
+
+def list_markets(
+    *,
+    series_ticker: str,
+    min_close_ts: int,
+    max_close_ts: int,
+    status: str = "",
+    limit_per_page: int = 1000,
+    max_pages: int = 20,
+    base_url: str = KALSHI_PUBLIC_BASE_URL,
+    timeout_s: float = 10.0,
+) -> list[dict[str, Any]]:
+    markets: list[dict[str, Any]] = []
+    cursor = ""
+    for _ in range(max(1, int(max_pages))):
+        resp = fetch_markets(
+            series_ticker=series_ticker,
+            min_close_ts=min_close_ts,
+            max_close_ts=max_close_ts,
+            status=status,
+            limit=limit_per_page,
+            cursor=cursor,
+            base_url=base_url,
+            timeout_s=timeout_s,
+        )
+        markets.extend(resp.get("markets", []) or [])
+        cursor = resp.get("cursor", "") or ""
+        if not cursor:
+            break
+    return markets
+
+
 def top_of_book_from_orderbook_response(resp: dict[str, Any]) -> TopOfBook:
     """
     Convert Kalshi GetMarketOrderbookResponse -> TopOfBook.

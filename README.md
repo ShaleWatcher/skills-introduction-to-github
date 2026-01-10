@@ -40,6 +40,20 @@ You can tune:
 python3 -m unittest discover -s tests -q
 ```
 
+## Generate “lock the spread” execution signals (forward 15-minute windows)
+
+This scans upcoming markets in the `KXBTC15M` series and outputs a signal when the market’s **YES/NO pair** allows a **locked payout** (buy YES + buy NO) at a net profit after fees.
+
+```bash
+python3 -m kalshi_arbitrage.signals --series KXBTC15M --lookahead-minutes 240 --fee 0.01 --min-profit 0.01
+```
+
+For machine consumption:
+
+```bash
+python3 -m kalshi_arbitrage.signals --output jsonl --lookahead-minutes 240
+```
+
 ## Code layout
 
 - `kalshi_arbitrage/models.py`: top-of-book model (`TopOfBook`)
@@ -47,6 +61,7 @@ python3 -m unittest discover -s tests -q
 - `kalshi_arbitrage/scenarios.py`: BTC path model + synthetic orderbooks
 - `kalshi_arbitrage/simulate.py`: CLI Monte Carlo runner
 - `kalshi_arbitrage/monitor.py`: simple polling monitor (file/URL JSON) for live-style following
+- `kalshi_arbitrage/signals.py`: scans forward windows and emits “lock spread” signals
 
 ## Next step (live “follow the contract”)
 
