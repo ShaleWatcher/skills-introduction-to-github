@@ -69,6 +69,39 @@ python3 -m kalshi_arbitrage.backtest --output csv --csv-path backtest.csv
 python3 -m kalshi_arbitrage.backtest --output jsonl
 ```
 
+## Web dashboard (single screen)
+
+This serves a single-page dashboard showing **Live signals + Backtest summary** on one screen.
+
+Install dependencies:
+
+```bash
+pip install -r requirements.txt
+```
+
+Run the server:
+
+```bash
+python3 -m kalshi_arbitrage.web --host 0.0.0.0 --port 8000
+```
+
+Open on your iPad Safari:
+- `http://<your-server-ip>:8000/`
+
+You can tune parameters via URL query params, e.g.:
+- `/?lookahead=240&lookback=1440&fee=0.01&min_profit=0.01&refresh=10&depth=1`
+
+### Optional: execution from the dashboard
+
+Execution is **disabled by default**. To enable trading buttons, set these env vars on the server:
+
+- `KALSHI_ENABLE_EXECUTION=1`
+- `KALSHI_ACCESS_KEY=<your api key id>`
+- `KALSHI_PRIVATE_KEY_PATH=/path/to/your/private.key`
+- `KALSHI_TRADE_BASE_URL=https://api.kalshi.com` (or `https://demo-api.kalshi.co`)
+
+Then the dashboard “Trade” button will submit a **Fill-or-Kill** paired order (BUY YES + BUY NO) for the selected ticker when a valid lock-spread signal exists.
+
 ## Code layout
 
 - `kalshi_arbitrage/models.py`: top-of-book model (`TopOfBook`)
@@ -78,6 +111,8 @@ python3 -m kalshi_arbitrage.backtest --output jsonl
 - `kalshi_arbitrage/monitor.py`: simple polling monitor (file/URL JSON) for live-style following
 - `kalshi_arbitrage/signals.py`: scans forward windows and emits “lock spread” signals
 - `kalshi_arbitrage/backtest.py`: historical backtest of lock-spread opportunities (candlesticks)
+- `kalshi_arbitrage/web.py`: single-page dashboard (Safari-friendly)
+- `kalshi_arbitrage/execution.py`: optional authenticated Kalshi order execution
 
 ## Next step (live “follow the contract”)
 
