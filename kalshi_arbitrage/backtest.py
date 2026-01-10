@@ -6,7 +6,7 @@ import json
 import time
 from dataclasses import dataclass, asdict
 from datetime import datetime, timezone
-from typing import Any, Iterable
+from typing import Any, Iterable, Optional
 
 from .kalshi import KALSHI_PUBLIC_BASE_URL, list_markets
 
@@ -80,6 +80,21 @@ class BacktestRow:
     profit_per_pair: float
 
 
+@dataclass(frozen=True, slots=True)
+class BacktestSummary:
+    series: str
+    start_ts: int
+    end_ts: int
+    markets_scanned: int
+    signals: int
+    wins: int
+    losses: int
+    total_profit: float
+    avg_profit: Optional[float]
+    min_profit: Optional[float]
+    max_profit: Optional[float]
+
+
 def iter_rows(
     *,
     series_ticker: str,
@@ -124,6 +139,90 @@ def iter_rows(
             )
 
 
+def compute_backtest_rows(
+    *,
+    series_ticker: str,
+    start_ts: int,
+    end_ts: int,
+    fee_per_contract: float,
+    min_profit_per_pair: float,
+    max_markets: int = 200,
+) -> tuple[list[dict[str, Any]], list[BacktestRow]]:
+    mkts = list_markets(
+        series_ticker=str(series_ticker),
+        min_close_ts=int(start_ts),
+        max_close_ts=int(end_ts),
+        status="",
+    )
+    mkts.sort(key=lambda m: (m.get("close_time") or ""))
+    mkts = mkts[: max(0, int(max_markets))]
+
+    rows: list[BacktestRow] = []
+    for m in mkts:
+        ticker = m.get("ticker")
+        if not ticker:
+            continue
+        open_time = m.get("open_time")
+        close_time = m.get("close_time")
+        if not open_time or not close_time:
+            continue
+        open_ts = int(_parse_rfc3339(open_time).timestamp())
+        close_ts = int(_parse_rfc3339(close_time).timestamp())
+        rows.extend(
+            list(
+                iter_rows(
+                    series_ticker=str(series_ticker),
+                    market_ticker=str(ticker),
+                    close_time=str(close_time),
+                    open_ts=open_ts,
+                    close_ts=close_ts,
+                    fee_per_contract=float(fee_per_contract),
+                    min_profit_per_pair=float(min_profit_per_pair),
+                )
+            )
+        )
+    return mkts, rows
+
+
+def compute_backtest_summary(
+    *,
+    series_ticker: str,
+    start_ts: int,
+    end_ts: int,
+    fee_per_contract: float,
+    min_profit_per_pair: float,
+    max_markets: int = 200,
+) -> BacktestSummary:
+    mkts, rows = compute_backtest_rows(
+        series_ticker=series_ticker,
+        start_ts=start_ts,
+        end_ts=end_ts,
+        fee_per_contract=fee_per_contract,
+        min_profit_per_pair=min_profit_per_pair,
+        max_markets=max_markets,
+    )
+    profits = [r.profit_per_pair for r in rows]
+    total = float(sum(profits))
+    wins = int(sum(1 for x in profits if x > 0))
+    losses = int(sum(1 for x in profits if x < 0))
+    avg = (total / len(profits)) if profits else None
+    mn = (min(profits) if profits else None)
+    mx = (max(profits) if profits else None)
+    return BacktestSummary(
+        series=str(series_ticker),
+        start_ts=int(start_ts),
+        end_ts=int(end_ts),
+        markets_scanned=int(len(mkts)),
+        signals=int(len(rows)),
+        wins=wins,
+        losses=losses,
+        total_profit=total,
+        avg_profit=float(avg) if avg is not None else None,
+        min_profit=float(mn) if mn is not None else None,
+        max_profit=float(mx) if mx is not None else None,
+    )
+
+
 def main() -> int:
     p = argparse.ArgumentParser(
         prog="kalshi_arbitrage.backtest",
@@ -154,41 +253,14 @@ def main() -> int:
     end_ts = _to_ts_utc(args.end) if args.end else _now_ts()
     start_ts = _to_ts_utc(args.start) if args.start else (end_ts - int(args.lookback_minutes) * 60)
 
-    mkts = list_markets(
+    mkts, rows = compute_backtest_rows(
         series_ticker=str(args.series),
-        min_close_ts=int(start_ts),
-        max_close_ts=int(end_ts),
-        status="",  # time filters are compatible with empty status
+        start_ts=start_ts,
+        end_ts=end_ts,
+        fee_per_contract=float(args.fee),
+        min_profit_per_pair=float(args.min_profit),
+        max_markets=int(args.max_markets),
     )
-    # Sort oldest -> newest, cap.
-    mkts.sort(key=lambda m: (m.get("close_time") or ""))
-    mkts = mkts[: max(0, int(args.max_markets))]
-
-    rows: list[BacktestRow] = []
-    for m in mkts:
-        ticker = m.get("ticker")
-        if not ticker:
-            continue
-        open_time = m.get("open_time")
-        close_time = m.get("close_time")
-        if not open_time or not close_time:
-            continue
-        open_ts = int(_parse_rfc3339(open_time).timestamp())
-        close_ts = int(_parse_rfc3339(close_time).timestamp())
-
-        rows.extend(
-            list(
-                iter_rows(
-                    series_ticker=str(args.series),
-                    market_ticker=str(ticker),
-                    close_time=str(close_time),
-                    open_ts=open_ts,
-                    close_ts=close_ts,
-                    fee_per_contract=float(args.fee),
-                    min_profit_per_pair=float(args.min_profit),
-                )
-            )
-        )
 
     if args.output == "jsonl":
         for r in rows:
