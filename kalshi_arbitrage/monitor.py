@@ -4,10 +4,10 @@ import argparse
 import json
 import time
 import urllib.request
-from dataclasses import asdict
 from typing import Any
 
-from .arbitrage import best_arb, find_up_down_arbs
+from .arbitrage import best_arb, find_up_down_arbs, find_yes_no_arbs
+from .kalshi import fetch_orderbook, ticker_from_kalshi_url, top_of_book_from_orderbook_response
 from .models import TopOfBook
 
 
@@ -50,26 +50,43 @@ def _tob_from_json(obj: dict[str, Any], *, units: str) -> TopOfBook:
 def main() -> int:
     p = argparse.ArgumentParser(
         prog="kalshi_arbitrage.monitor",
-        description="Poll two UP/DOWN top-of-book snapshots and print locked arb opportunities.",
+        description=(
+            "Poll Kalshi (by URL/ticker) or two UP/DOWN snapshots and print locked arb opportunities."
+        ),
     )
-    p.add_argument("--up", required=True, help="Path or URL to UP top-of-book JSON.")
-    p.add_argument("--down", required=True, help="Path or URL to DOWN top-of-book JSON.")
+    g = p.add_mutually_exclusive_group(required=True)
+    g.add_argument("--ticker", help="Kalshi market ticker (e.g. kxbtc15m-26jan101400).")
+    g.add_argument("--kalshi-url", help="Kalshi market URL; ticker will be parsed from it.")
+    g.add_argument("--up", help="Path or URL to UP top-of-book JSON.")
+    p.add_argument("--down", help="Path or URL to DOWN top-of-book JSON (required with --up).")
     p.add_argument("--units", choices=["dollars", "cents"], default="dollars", help="Input price units.")
     p.add_argument("--fee", type=float, default=0.01, help="Fee per contract per leg in $.")
     p.add_argument("--min-profit", type=float, default=0.0, help="Minimum profit per pair in $.")
     p.add_argument("--interval", type=float, default=1.0, help="Polling interval in seconds.")
+    p.add_argument("--depth", type=int, default=1, help="Kalshi orderbook depth (1-100).")
     args = p.parse_args()
 
     while True:
-        up = _tob_from_json(_load_json(args.up), units=args.units)
-        down = _tob_from_json(_load_json(args.down), units=args.units)
-
-        opps = find_up_down_arbs(
-            up,
-            down,
-            fee_per_contract=float(args.fee),
-            min_profit_per_pair=float(args.min_profit),
-        )
+        if args.ticker or args.kalshi_url:
+            ticker = args.ticker or ticker_from_kalshi_url(args.kalshi_url)
+            ob = fetch_orderbook(ticker, depth=int(args.depth))
+            mkt = top_of_book_from_orderbook_response(ob)
+            opps = find_yes_no_arbs(
+                mkt,
+                fee_per_contract=float(args.fee),
+                min_profit_per_pair=float(args.min_profit),
+            )
+        else:
+            if not args.down:
+                raise SystemExit("--down is required when using --up")
+            up = _tob_from_json(_load_json(args.up), units=args.units)
+            down = _tob_from_json(_load_json(args.down), units=args.units)
+            opps = find_up_down_arbs(
+                up,
+                down,
+                fee_per_contract=float(args.fee),
+                min_profit_per_pair=float(args.min_profit),
+            )
         opp = best_arb(opps)
 
         ts = time.strftime("%Y-%m-%d %H:%M:%S")

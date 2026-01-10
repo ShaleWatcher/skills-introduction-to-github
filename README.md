@@ -76,3 +76,13 @@ If you can export top-of-book snapshots to a simple JSON shape like:
 ```bash
 python3 -m kalshi_arbitrage.monitor --up path/to/up.json --down path/to/down.json --units dollars
 ```
+
+### Monitor a live Kalshi market (by URL)
+
+Example (your market):
+
+```bash
+python3 -m kalshi_arbitrage.monitor --kalshi-url "https://kalshi.com/markets/kxbtc15m/bitcoin-price-up-down/kxbtc15m-26jan101400"
+```
+
+This uses Kalshi’s documented base URL (`https://api.elections.kalshi.com/trade-api/v2`) to fetch `/markets/{ticker}/orderbook` and then checks **single-market YES/NO** locked arbitrage.

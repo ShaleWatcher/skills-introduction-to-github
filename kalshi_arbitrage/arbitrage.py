@@ -132,3 +132,54 @@ def best_arb(
             best = opp
     return best
 
+
+def find_yes_no_arbs(
+    market: TopOfBook,
+    *,
+    fee_per_contract: float = 0.0,
+    min_profit_per_pair: float = 0.0,
+) -> list[ArbOpportunity]:
+    """
+    Detect locked arbitrage *within a single binary market* by pairing YES and NO.
+
+    - Buy YES + Buy NO => payout always $1
+    - Sell YES + Sell NO => liability always $1
+    """
+
+    m = market.normalized()
+    fee = _as_fee(fee_per_contract)
+    min_profit = float(min_profit_per_pair)
+
+    opportunities: list[ArbOpportunity] = []
+
+    # Buy both at asks
+    if m.yes_ask is not None and m.no_ask is not None:
+        cost = m.yes_ask + m.no_ask + 2.0 * fee
+        profit = 1.0 - cost
+        if profit >= min_profit:
+            opportunities.append(
+                ArbOpportunity(
+                    strategy=Strategy.BUY_YES_BOTH,  # reused label; here it means BUY(YES+NO)
+                    profit_per_pair=profit,
+                    max_pairs_at_top=_min_int(m.yes_ask_size, m.no_ask_size),
+                    legs=("MKT:YES@ask", "MKT:NO@ask"),
+                )
+            )
+
+    # Sell both at bids
+    if m.yes_bid is not None and m.no_bid is not None:
+        revenue = m.yes_bid + m.no_bid - 2.0 * fee
+        profit = revenue - 1.0
+        if profit >= min_profit:
+            opportunities.append(
+                ArbOpportunity(
+                    strategy=Strategy.SELL_YES_BOTH,  # reused label; here it means SELL(YES+NO)
+                    profit_per_pair=profit,
+                    max_pairs_at_top=_min_int(m.yes_bid_size, m.no_bid_size),
+                    legs=("MKT:YES@bid", "MKT:NO@bid"),
+                )
+            )
+
+    opportunities.sort(key=lambda o: o.profit_per_pair, reverse=True)
+    return opportunities
+
