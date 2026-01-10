@@ -54,6 +54,21 @@ For machine consumption:
 python3 -m kalshi_arbitrage.signals --output jsonl --lookahead-minutes 240
 ```
 
+## Backtest (historical wins/losses) for “lock spread” opportunities
+
+This uses Kalshi’s **1-minute candlesticks** to find moments where the YES book is **crossed** (bid > ask), which is the only way a single-market “lock spread” can be risk-free.
+
+```bash
+python3 -m kalshi_arbitrage.backtest --series KXBTC15M --lookback-minutes 720 --fee 0.01 --min-profit 0.01
+```
+
+Export rows:
+
+```bash
+python3 -m kalshi_arbitrage.backtest --output csv --csv-path backtest.csv
+python3 -m kalshi_arbitrage.backtest --output jsonl
+```
+
 ## Code layout
 
 - `kalshi_arbitrage/models.py`: top-of-book model (`TopOfBook`)
@@ -62,6 +77,7 @@ python3 -m kalshi_arbitrage.signals --output jsonl --lookahead-minutes 240
 - `kalshi_arbitrage/simulate.py`: CLI Monte Carlo runner
 - `kalshi_arbitrage/monitor.py`: simple polling monitor (file/URL JSON) for live-style following
 - `kalshi_arbitrage/signals.py`: scans forward windows and emits “lock spread” signals
+- `kalshi_arbitrage/backtest.py`: historical backtest of lock-spread opportunities (candlesticks)
 
 ## Next step (live “follow the contract”)
 
