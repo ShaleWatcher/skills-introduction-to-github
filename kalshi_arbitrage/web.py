@@ -96,7 +96,7 @@ HTML = """<!doctype html>
         const resp = await fetch(url);
         const data = await resp.json();
 
-        document.getElementById("mode").textContent = data.execution_enabled ? "EXECUTION ENABLED" : "paper mode (no execution)";
+        document.getElementById("mode").textContent = data.execution_enabled ? `EXECUTION ENABLED (${data.execution_mode})` : "paper mode (no execution)";
         document.getElementById("mode").className = data.execution_enabled ? "pill ok" : "pill";
 
         const tbody = document.getElementById("signals");
@@ -220,9 +220,9 @@ class Handler(BaseHTTPRequestHandler):
                 min_profit_per_pair=min_profit,
             )
 
-            execution_enabled = bool(os.environ.get("KALSHI_ENABLE_EXECUTION", "").strip() == "1") and (
-                KalshiAuth.from_env() is not None
-            )
+            auth = KalshiAuth.from_env()
+            execution_enabled = bool(os.environ.get("KALSHI_ENABLE_EXECUTION", "").strip() == "1") and (auth is not None)
+            execution_mode = auth.mode if auth is not None else "disabled"
 
             # Convert to jsonable dicts
             sig_rows = [
@@ -243,6 +243,7 @@ class Handler(BaseHTTPRequestHandler):
                 {
                     "series": series,
                     "execution_enabled": execution_enabled,
+                    "execution_mode": execution_mode,
                     "signals": sig_rows,
                     "backtest": {
                         "markets_scanned": bt.markets_scanned,
@@ -279,7 +280,17 @@ class Handler(BaseHTTPRequestHandler):
                 self,
                 403,
                 {
-                    "error": "Missing credentials. Set KALSHI_ACCESS_KEY and KALSHI_PRIVATE_KEY_PATH (and optionally KALSHI_TRADE_BASE_URL)."
+                    "error": "Execution not configured. Set KALSHI_EXECUTION_MODE=demo (or live) plus KALSHI_ACCESS_KEY and KALSHI_PRIVATE_KEY_PATH."
+                },
+            )
+
+        # Extra safety: live mode requires explicit acknowledgement.
+        if auth.mode == "live" and os.environ.get("KALSHI_CONFIRM_LIVE", "").strip() != "I_UNDERSTAND":
+            return _json(
+                self,
+                403,
+                {
+                    "error": "Live execution blocked. Set KALSHI_CONFIRM_LIVE=I_UNDERSTAND to allow live orders."
                 },
             )
 

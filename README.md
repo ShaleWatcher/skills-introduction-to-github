@@ -96,11 +96,16 @@ You can tune parameters via URL query params, e.g.:
 Execution is **disabled by default**. To enable trading buttons, set these env vars on the server:
 
 - `KALSHI_ENABLE_EXECUTION=1`
+- `KALSHI_EXECUTION_MODE=demo` (recommended) or `live`
 - `KALSHI_ACCESS_KEY=<your api key id>`
 - `KALSHI_PRIVATE_KEY_PATH=/path/to/your/private.key`
-- `KALSHI_TRADE_BASE_URL=https://api.kalshi.com` (or `https://demo-api.kalshi.co`)
+- `KALSHI_TRADE_BASE_URL=https://demo-api.kalshi.co` (optional; defaults based on mode)
 
-Then the dashboard “Trade” button will submit a **Fill-or-Kill** paired order (BUY YES + BUY NO) for the selected ticker when a valid lock-spread signal exists.
+If (and only if) you explicitly set `KALSHI_EXECUTION_MODE=live`, you must also set:
+
+- `KALSHI_CONFIRM_LIVE=I_UNDERSTAND`
+
+Then the dashboard “Trade” button can submit a **Fill-or-Kill** paired order (BUY YES + BUY NO) for the selected ticker when a valid lock-spread signal exists.
 
 ## Code layout
 

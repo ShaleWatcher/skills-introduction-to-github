@@ -44,15 +44,29 @@ class KalshiAuth:
     key_id: str
     private_key_path: str
     base_url: str  # e.g. https://api.kalshi.com or https://demo-api.kalshi.co
+    mode: str  # "demo" or "live"
 
     @staticmethod
     def from_env() -> Optional["KalshiAuth"]:
         key_id = os.environ.get("KALSHI_ACCESS_KEY", "").strip()
         key_path = os.environ.get("KALSHI_PRIVATE_KEY_PATH", "").strip()
-        base_url = os.environ.get("KALSHI_TRADE_BASE_URL", "https://api.kalshi.com").strip()
+        base_url = os.environ.get("KALSHI_TRADE_BASE_URL", "").strip()
+        mode = os.environ.get("KALSHI_EXECUTION_MODE", "").strip().lower()
+
+        # Hard safety: require an explicit mode to be set.
+        if mode not in {"demo", "live"}:
+            return None
+
+        if not base_url:
+            base_url = "https://demo-api.kalshi.co" if mode == "demo" else "https://api.kalshi.com"
         if not key_id or not key_path:
             return None
-        return KalshiAuth(key_id=key_id, private_key_path=key_path, base_url=base_url.rstrip("/"))
+        return KalshiAuth(
+            key_id=key_id,
+            private_key_path=key_path,
+            base_url=base_url.rstrip("/"),
+            mode=mode,
+        )
 
 
 class KalshiClient:
